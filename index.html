@@ -46,6 +46,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 #tPounce{bottom:calc(34px + var(--sab))}
 #tRun{bottom:calc(112px + var(--sab))}
 #tTime{bottom:calc(190px + var(--sab));font-size:11px}
+#tSwipe{right:calc(100px + var(--sar));bottom:calc(34px + var(--sab))}
+#tBite{right:calc(100px + var(--sar));bottom:calc(112px + var(--sab))}
 #tRun.on{background:rgba(227,162,74,.55)}
 </style>
 </head>
@@ -67,7 +69,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div id="tod">Dusk</div>
   <div id="tally"><span>Hunters taken</span><b id="count">0</b></div>
   <div id="toast"></div>
-  <div id="hint"><b>WASD</b> move · <b>Shift</b> run · <b>C</b> stalk · <b>Space</b> pounce (under a machan: leap up) · <b>N</b> dusk / night · <b>M</b> sound</div>
+  <div id="hint"><b>WASD</b> move · <b>Shift</b> run · <b>C</b> stalk · <b>Click</b> paw swipe · <b>Right-click</b> bite · <b>Space</b> pounce (under a machan: leap up) · <b>N</b> dusk / night · <b>M</b> sound</div>
   <div id="lockmsg" class="hidden">Click to look around</div>
 </div>
 <div id="touch" class="hidden">
@@ -75,6 +77,8 @@ button{font:inherit;color:inherit;cursor:pointer}
   <button class="tbtn" id="tTime">Night</button>
   <button class="tbtn" id="tRun">Run</button>
   <button class="tbtn" id="tPounce">Pounce</button>
+  <button class="tbtn" id="tSwipe">Swipe</button>
+  <button class="tbtn" id="tBite">Bite</button>
 </div>
 
 <script src="lib/three.min.js"></script>
@@ -529,11 +533,20 @@ function setupPanther(){ const g=ASSETS.panther; if(!g) return; const s=g.scene;
   s.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; o.frustumCulled=false; const m=o.material; m.metalness=0; m.roughness=.75; m.envMapIntensity=1.6; m.color.setRGB(1.5,1.5,1.55); } if(o.isBone){ LEO.B[o.name]=o; LEO.rest[o.name]=o.position.clone(); } });
   LEO.body.add(s);
   if(LEO.B.head) for(const sx of [-1,1]){ const e=new THREE.Sprite(eyeMat); e.scale.set(.06,.06,1); e.position.set(sx*.043,.02,.165); LEO.B.head.add(e); }
+  if(LEO.B.jaw){ const tm=new THREE.MeshStandardMaterial({color:0xf3ead6,roughness:.3,metalness:0}), gm=new THREE.MeshStandardMaterial({color:0x6e1f22,roughness:.45,metalness:0}), dm=new THREE.MeshStandardMaterial({color:0x2a0a0c,roughness:.6,metalness:0}); LEO.teeth=[];
+    const add=(par,m,geo,x,y,z,rx)=>{ const o=new THREE.Mesh(geo,m); o.position.set(x,y,z); if(rx) o.rotation.x=rx; par.add(o); LEO.teeth.push(o); return o; };
+    const cav=add(LEO.B.head,dm,new THREE.SphereGeometry(1,16,10),0,-.078,.118); cav.scale.set(.036,.016,.06);
+    const pal=add(LEO.B.head,gm,new THREE.SphereGeometry(1,16,10),0,-.074,.13); pal.scale.set(.03,.008,.052);
+    for(const sx of [-1,1]){ add(LEO.B.head,tm,new THREE.ConeGeometry(.0075,.032,10),sx*.021,-.094,.17,Math.PI); add(LEO.B.head,tm,new THREE.ConeGeometry(.0035,.012,6),sx*.009,-.088,.178,Math.PI);
+      add(LEO.B.jaw,tm,new THREE.ConeGeometry(.0065,.026,10),sx*.018,-.006,.114); add(LEO.B.jaw,tm,new THREE.ConeGeometry(.003,.01,6),sx*.008,-.01,.122); }
+    const tg=add(LEO.B.jaw,gm,new THREE.SphereGeometry(1,16,10),0,-.016,.07); tg.scale.set(.028,.009,.055);
+    const fl=add(LEO.B.jaw,dm,new THREE.SphereGeometry(1,16,10),0,-.02,.07); fl.scale.set(.034,.012,.06); }
   LEO.ready=true; }
 loadGLB('panther','models/panther.glb'); loadGLB('hunter','models/hunter.glb'); loadGLB('safari','models/safari.glb'); loadGLB('anims','models/human_anims.glb');
 
 /* ---------- player ---------- */
-const P={pos:new V3(-50,0,-84), yaw:.2, speed:0, vy:0, air:false, stalk:false, run:false, phase:0, pitch:0, pounceT:0};
+const P={pos:new V3(-50,0,-84), yaw:.2, speed:0, vy:0, air:false, stalk:false, run:false, phase:0, pitch:0, pounceT:0, atk:null, lunge:0};
+let shake=0;
 P.pos.y=groundAt(P.pos.x,P.pos.z);
 let camYaw=P.yaw+Math.PI, camPitch=.14; const KEYS={};
 const LIM=315;
@@ -549,13 +562,24 @@ function pounce(){ if(P.air||P.pounceT>0||titleMode) return;
   let tgt=null, td=8; for(const h of HUNTERS){ if(h.state==='down'||h.state==='plat') continue; const dx=h.pos.x-P.pos.x, dz=h.pos.z-P.pos.z, d=Math.hypot(dx,dz); if(d<td){ const a=Math.atan2(dx,dz); if(Math.abs(lerpAngle(0,a-P.yaw,1))<1){ td=d; tgt={a,d}; } } }
   if(tgt){ P.yaw=tgt.a; P.speed=clamp(tgt.d*1.5,6,12.5); } else P.speed=Math.max(P.speed,10.5);
   P.vy=6.2; P.air=true; P.pounceT=.9; sfx('pounce'); }
+/* attacks: paw swipe (stuns, 1 damage) and bite (2 damage, kills) */
+const ATK={swipe:{dur:.5,hitT:.42,reach:1.75,dmg:1}, bite:{dur:.56,hitT:.42,reach:1.55,dmg:2}};
+function attack(type){ if(titleMode||P.air||P.atk) return; P.atk={type,t:0,hit:false};
+  let best=null, bd=3.2; for(const h of HUNTERS){ if(h.state==='down') continue; const dx=h.pos.x-P.pos.x, dz=h.pos.z-P.pos.z, d=Math.hypot(dx,dz); if(d<bd&&Math.abs(h.pos.y-P.pos.y)<1.3){ const a=Math.atan2(dx,dz); if(Math.abs(lerpAngle(0,a-P.yaw,1))<1.1){ bd=d; best=a; } } }
+  if(best!==null) P.yaw=best; if(type==='bite') P.lunge=.22; sfx(type); }
+function attackHit(type){ const A=ATK[type], fx=Math.sin(P.yaw), fz=Math.cos(P.yaw), hx=P.pos.x+fx*.75, hz=P.pos.z+fz*.75; let best=null, bd=A.reach;
+  for(const h of HUNTERS){ if(h.state==='down') continue; const d=Math.hypot(h.pos.x-hx,h.pos.z-hz); if(d<bd&&Math.abs(h.pos.y-P.pos.y)<1.3){ bd=d; best=h; } }
+  if(best) hurt(best,A.dmg,type); }
+function hurt(h,dmg,type){ h.hp-=dmg; h.alarm=1; shake=type==='bite'?.32:.22; sfx('hit');
+  if(h.hp<=0){ takeDown(h); return; } h.state='stun'; h.stunT=2.2; for(const k in h.A) h.A[k].timeScale=0; }
 function updatePlayer(dt){
   let ix=(KEYS.KeyD||KEYS.ArrowRight?1:0)-(KEYS.KeyA||KEYS.ArrowLeft?1:0), iz=(KEYS.KeyW||KEYS.ArrowUp?1:0)-(KEYS.KeyS||KEYS.ArrowDown?1:0);
   if(TOUCH.active){ ix=TOUCH.x; iz=-TOUCH.y; }
   const fx=-Math.sin(camYaw), fz=-Math.cos(camYaw); const mx=fx*iz-fz*ix, mz=fz*iz+fx*ix; const mag=Math.min(1,Math.hypot(mx,mz));
   P.run=(KEYS.ShiftLeft||KEYS.ShiftRight||TOUCH.run)&&!P.stalk; const top=P.stalk?1.3:P.run?9.5:2.5;
   if(mag>.05 && !P.air){ const want=Math.atan2(mx,mz); P.yaw=lerpAngle(P.yaw,want,dt*(P.speed>5?4.5:8)); }
-  const tgt=P.air?P.speed:top*mag; P.speed=lerp(P.speed,tgt,1-Math.exp(-dt*(tgt>P.speed?3.2:6)));
+  if(P.atk&&!P.atk.frozen){ const A=ATK[P.atk.type]; P.atk.t+=dt; if(!P.atk.hit&&P.atk.t>=A.hitT){ P.atk.hit=true; attackHit(P.atk.type); } if(P.atk.t>=A.dur) P.atk=null; }
+  const tgt=P.air?P.speed:P.lunge>0?4.2:top*mag*(P.atk?.25:1); P.lunge=Math.max(0,P.lunge-dt); P.speed=lerp(P.speed,tgt,1-Math.exp(-dt*(tgt>P.speed?3.2:6)));
   let nx=P.pos.x+Math.sin(P.yaw)*P.speed*dt, nz=P.pos.z+Math.cos(P.yaw)*P.speed*dt;
   [nx,nz]=collide(nx,nz); nx=clamp(nx,-LIM,LIM); nz=clamp(nz,-LIM,LIM);
   if(wet(nx,nz)){ if(!wet(nx,P.pos.z)) nz=P.pos.z; else if(!wet(P.pos.x,nz)) nx=P.pos.x; else { nx=P.pos.x; nz=P.pos.z; } P.speed*=.6; }
@@ -588,6 +612,23 @@ function animateLeopard(dt,t){
   B.neck.rotation.x=lerp(B.neck.rotation.x,(c>.5?.32:running?.18:0)+(moving?0:Math.sin(t*.4)*.05),1-Math.exp(-dt*5));
   B.head.rotation.x=lerp(B.head.rotation.x,c>.5?-.22:running?-.12:0,1-Math.exp(-dt*5));
   B.head.rotation.y=lerp(B.head.rotation.y,moving?0:Math.sin(t*.33)*.4,1-Math.exp(-dt*3));
+  let jaw=c>.5?.06:0;
+  if(P.atk){ const p=P.atk.t/ATK[P.atk.type].dur;
+    if(P.atk.type==='swipe'){ let sh,el,wr,sz;
+      if(p<.35){ const e=sstep(0,.35,p); sh=-1.15*e; el=1.2*e; wr=-.35*e; sz=0; }
+      else if(p<.56){ const e=sstep(.35,.52,p); sh=lerp(-1.15,-.3,e); el=lerp(1.2,.15,e); wr=lerp(-.35,.45,e); sz=.55*e; }
+      else { const e=sstep(.56,1,p); sh=-.3*(1-e); el=.15*(1-e); wr=.45*(1-e); sz=.55*(1-e); }
+      const w=p<.56?sstep(0,.25,p):1-sstep(.56,1,p);
+      B.shoulderR.rotation.x=sh; B.shoulderR.rotation.z=sz; B.elbowR.rotation.x=el; B.wristR.rotation.x=wr;
+      B.shoulderL.rotation.x=.15*w; B.spine.rotation.x=-.2*w; B.chest.rotation.x=-.12*w; B.neck.rotation.x=.12*w; B.head.rotation.x=-.12*w; B.head.rotation.y=-.2*w; jaw=.42*w;
+      B.hips.position.y-=.05*w; }
+    else { const env=p<.5?sstep(0,.2,p):1-sstep(.6,1,p); const o=sstep(0,.36,p);
+      jaw=.95*o*(1-sstep(.38,.47,p))+(p>.47?.05*(1-sstep(.47,1,p)):0);
+      B.neck.rotation.x=.38*env; B.head.rotation.x=-.24*env; B.head.rotation.y=0; B.spine.rotation.x=.08*env; B.hips.position.y-=.04*env;
+      for(const n of ['shoulderL','shoulderR']) B[n].rotation.x=-.28*env; for(const n of ['elbowL','elbowR']) B[n].rotation.x=.35*env; } }
+  else { if(B.shoulderR) B.shoulderR.rotation.z=lerp(B.shoulderR.rotation.z,0,1-Math.exp(-dt*10)); }
+  if(window.JAWF!==undefined) jaw=window.JAWF;
+  if(B.jaw){ B.jaw.rotation.x=lerp(B.jaw.rotation.x,jaw,1-Math.exp(-dt*28)); if(LEO.teeth) LEO.teeth.forEach(m=>m.visible=B.jaw.rotation.x>.07); }
   for(let i=0;i<6;i++){ const s=B['tail'+i]; if(!s) continue; const base=i===0?(running||P.air?-.85:c>.5?-.55:-.12):(running?.05:i>3?-.1:0);
     s.rotation.x=lerp(s.rotation.x,base+(running?Math.sin(ph-i*.6)*.08:0),1-Math.exp(-dt*6)); s.rotation.z=Math.sin(t*(moving?3:1.2)-i*.5)*(c>.5?.03:moving?.07:.14)*(i/5+.4); }
 }
@@ -607,9 +648,9 @@ function setupHunters(){ if(!ASSETS.anims||!(ASSETS.hunter||ASSETS.safari)) retu
   const routes=[PATHS[0].slice(1,5),PATHS[3].slice(0,4),PATHS[1].slice(0,4),[[-20,-40],[-60,-20],[-80,20],[-50,60]]];
   routes.forEach(r=>{ const st=r[0]; const h=Object.assign(makeHuman(kind()),{pos:new V3(st[0],groundAt(st[0],st[1]),st[1]),yaw:0,state:'patrol',route:r,ri:1,dir:1,speed:0,alarm:0}); h.lamp=lantern(0,0,0,false); HUNTERS.push(h); });
   [[2,4],[-8,2],[7,1]].forEach(q=>{ const x=V.x+q[0], z=V.z+q[1]; HUNTERS.push(Object.assign(makeHuman(kind()),{pos:new V3(x,groundAt(x,z),z),yaw:R()*6.28,state:'idle',speed:0,alarm:0})); });
-  HUNTERS.forEach(h=>{ h.wrap.position.copy(h.pos); h.wrap.rotation.y=h.yaw; });
+  HUNTERS.forEach(h=>{ h.hp=2; h.wrap.position.copy(h.pos); h.wrap.rotation.y=h.yaw; });
   $('count').textContent='0 / '+HUNTERS.length; }
-function takeDown(h){ h.state='down'; h.downT=0; h.speed=0; for(const k in h.A) h.A[k].timeScale=0; taken++; sfx('take');
+function takeDown(h){ h.state='down'; h.downT=h.tilt.rotation.x<-1?1:0; h.speed=0; for(const k in h.A) h.A[k].timeScale=0; taken++; sfx('take');
   $('count').textContent=taken+' / '+HUNTERS.length; toast(taken===HUNTERS.length?'The forest is quiet. Every hunter is gone.':h.plat?'Taken from his machan':'Hunter taken'); if(h.lamp) h.lamp.visible=false; }
 function updateHunters(dt){ const night=todT>.5;
   for(const h of HUNTERS){
@@ -617,8 +658,8 @@ function updateHunters(dt){ const night=todT>.5;
     const dx=P.pos.x-h.pos.x, dz=P.pos.z-h.pos.z, d=Math.hypot(dx,dz), dy=P.pos.y-h.pos.y;
     let det=P.stalk?6:P.run?26:14; if(night) det*=.65; if(h.state==='plat') det*=1.25;
     if(!titleMode&&d<det) h.alarm=Math.min(1,h.alarm+dt*(P.stalk?1.1:3)); else h.alarm=Math.max(0,h.alarm-dt*.12);
-    if(!titleMode&&h.state!=='plat'&&P.pounceT>0&&d<1.6&&Math.abs(dy)<1.4){ takeDown(h); continue; }
-    if(!titleMode&&h.state==='plat'&&d<1.9&&Math.abs(dy)<.9){ takeDown(h); continue; }
+    if(h.state==='stun'){ h.stunT-=dt; const lying=h.stunT>.55; h.tilt.rotation.x=lerp(h.tilt.rotation.x,lying?-1.48:0,1-Math.exp(-dt*(lying?11:4))); if(h.stunT<=0){ h.tilt.rotation.x=0; for(const k in h.A) h.A[k].timeScale=1; h.state=h.plat?'plat':'flee'; h.fleeT=7; } h.wrap.position.copy(h.pos); continue; }
+    if(!titleMode&&P.pounceT>0&&P.air&&P.vy<0&&d<1.6&&Math.abs(dy)<1.4){ h.state='stun'; h.stunT=2.8; h.alarm=1; for(const k in h.A) h.A[k].timeScale=0; shake=.3; sfx('hit'); continue; }
     if(h.state==='plat'){ if(h.alarm>.4) h.yaw=lerpAngle(h.yaw,Math.atan2(dx,dz),dt*3); }
     else { let want=0;
       if(h.alarm>.55&&h.state!=='flee'){ h.state='flee'; h.fleeT=7; }
@@ -643,10 +684,12 @@ let toastT=0; function toast(msg){ const el=$('toast'); el.textContent=msg; el.c
 const camTarget=new V3(); let titleMode=true, titleT=0, SNAP=false;
 function updateCamera(dt){
   if(titleMode){ titleT+=dt*.03; const a=Math.sin(titleT)*.35; const cx=V.x+Math.sin(a)*78, cz=V.z+Math.cos(a)*78; camera.position.set(cx,HV+16,cz); camera.lookAt(V.x-Math.sin(a)*40,HV+12,V.z-60); return; }
+  if(window.CAMOVR){ const o=window.CAMOVR, fx=Math.sin(P.yaw), fz=Math.cos(P.yaw), rx=fz, rz=-fx; camera.position.set(P.pos.x+fx*o[2]+rx*o[0],P.pos.y+o[1],P.pos.z+fz*o[2]+rz*o[0]); camera.lookAt(P.pos.x+fx*o[5]+rx*o[3],P.pos.y+o[4],P.pos.z+fz*o[5]+rz*o[3]); return; }
   camTarget.set(P.pos.x,P.pos.y+.85-(LEO.cr||0)*.22,P.pos.z);
   const cp=Math.cos(camPitch), d=camDist*(P.run?1.15:1);
   const want=new V3(camTarget.x+Math.sin(camYaw)*cp*d, camTarget.y+Math.sin(camPitch)*d, camTarget.z+Math.cos(camYaw)*cp*d);
   const gy=groundAt(want.x,want.z)+.5; if(want.y<gy) want.y=gy;
+  if(shake>0){ want.x+=(Math.random()-.5)*shake*.35; want.y+=(Math.random()-.5)*shake*.25; shake=Math.max(0,shake-dt*1.6); }
   if(SNAP){ camera.position.copy(want); SNAP=false; } else camera.position.lerp(want,1-Math.exp(-dt*14)); camera.lookAt(camTarget.x,camTarget.y+.35,camTarget.z);
 }
 
@@ -673,7 +716,7 @@ function initAudio(){ if(AC) { if(AC.state==='suspended') AC.resume(); return; }
   const wbuf=AC.createBuffer(1,AC.sampleRate*3,AC.sampleRate), wd=wbuf.getChannelData(0); for(let i=0;i<wd.length;i++) wd[i]=Math.random()*2-1;
   const rs=AC.createBufferSource(); rs.buffer=wbuf; rs.loop=true; const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=.6; riverG=AC.createGain(); riverG.gain.value=0; rs.connect(bp); bp.connect(riverG); riverG.connect(master); rs.start(); }
 function tone(f1,f2,dur,type,vol,delay){ if(!AC||muted) return; const t=AC.currentTime+(delay||0), o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.setValueAtTime(f1,t); o.frequency.exponentialRampToValueAtTime(f2,t+dur); g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+dur); o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.05); }
-function sfx(n){ if(n==='pounce') tone(160,70,.25,'triangle',.08); if(n==='take'){ tone(120,45,.4,'sine',.2); tone(300,180,.25,'triangle',.05,.05); } }
+function sfx(n){ if(n==='pounce') tone(160,70,.25,'triangle',.08); if(n==='swipe'){ tone(1400,300,.16,'sawtooth',.025); tone(95,70,.3,'sawtooth',.05); } if(n==='bite'){ tone(120,70,.42,'sawtooth',.1); tone(170,95,.35,'square',.035,.05); } if(n==='hit'){ tone(150,50,.2,'sine',.25); tone(560,380,.28,'triangle',.05,.04); } if(n==='take'){ tone(120,45,.4,'sine',.2); tone(300,180,.25,'triangle',.05,.05); } }
 function ambience(dt,t){ if(!AC) return; master.gain.value=muted?0:.6; windG.gain.value=.18+.1*Math.sin(t*.13)+.06*Math.sin(t*.41);
   const rd=Math.abs(P.pos.z-riverZ(P.pos.x)); riverG.gain.value=clamp(1-rd/90,0,1)*.35;
   if(todT<.5){ if(t>nextBird){ nextBird=t+2+Math.random()*5; const f=2200+Math.random()*1800, n=2+(Math.random()*4|0); for(let i=0;i<n;i++) tone(f*(1+Math.random()*.15),f*.8,.09+Math.random()*.06,'sine',.03,i*.13); } }
@@ -683,12 +726,13 @@ function ambience(dt,t){ if(!AC) return; master.gain.value=muted?0:.6; windG.gai
 /* ---------- input ---------- */
 let locked=false;
 addEventListener('keydown',e=>{ KEYS[e.code]=true; if(titleMode) return;
-  if(e.code==='Space'){ e.preventDefault(); pounce(); } if(e.code==='KeyC') P.stalk=!P.stalk; if(e.code==='KeyN') toggleTOD(); if(e.code==='KeyM') muted=!muted; });
+  if(e.code==='Space'){ e.preventDefault(); pounce(); } if(e.code==='KeyF') attack('swipe'); if(e.code==='KeyE') attack('bite'); if(e.code==='KeyC') P.stalk=!P.stalk; if(e.code==='KeyN') toggleTOD(); if(e.code==='KeyM') muted=!muted; });
 addEventListener('keyup',e=>{ KEYS[e.code]=false; });
 addEventListener('blur',()=>{ for(const k in KEYS) KEYS[k]=false; });
 canvas.addEventListener('click',()=>{ if(!titleMode&&!isTouch&&!locked){ try{ const r=canvas.requestPointerLock(); if(r&&r.catch) r.catch(()=>{}); }catch(e){} } });
 document.addEventListener('pointerlockchange',()=>{ locked=document.pointerLockElement===canvas; $('lockmsg').classList.toggle('hidden',locked||titleMode||isTouch); });
-let drag=false; canvas.addEventListener('mousedown',()=>drag=true); addEventListener('mouseup',()=>drag=false);
+let drag=false; canvas.addEventListener('mousedown',e=>{ drag=true; if(locked&&!titleMode){ if(e.button===0) attack('swipe'); if(e.button===2) attack('bite'); } });
+canvas.addEventListener('contextmenu',e=>e.preventDefault()); addEventListener('mouseup',()=>drag=false);
 addEventListener('mousemove',e=>{ if(titleMode) return; if(locked||drag){ camYaw-=e.movementX*.0026; camPitch=clamp(camPitch+e.movementY*.0022,-.25,1.25); } });
 addEventListener('wheel',e=>{ camDist=clamp(camDist+e.deltaY*.004,2.6,12); },{passive:true});
 const TOUCH={active:false,x:0,y:0,run:false,id:null,lookId:null,lx:0,ly:0};
@@ -697,7 +741,7 @@ if(isTouch){ const st=$('stick'), kn=$('knob');
   addEventListener('touchmove',e=>{ for(const t of e.changedTouches){ if(t.identifier===TOUCH.id){ const r=st.getBoundingClientRect(); let dx=(t.clientX-(r.left+r.width/2))/50, dy=(t.clientY-(r.top+r.height/2))/50; const m=Math.hypot(dx,dy); if(m>1){dx/=m;dy/=m;} TOUCH.x=dx; TOUCH.y=dy; kn.style.transform=`translate(${dx*36}px,${dy*36}px)`; } else if(t.identifier===TOUCH.lookId){ camYaw-=(t.clientX-TOUCH.lx)*.006; camPitch=clamp(camPitch+(t.clientY-TOUCH.ly)*.005,-.25,1.25); TOUCH.lx=t.clientX; TOUCH.ly=t.clientY; } } },{passive:true});
   const end=e=>{ for(const t of e.changedTouches){ if(t.identifier===TOUCH.id){ TOUCH.id=null; TOUCH.active=false; TOUCH.x=TOUCH.y=0; kn.style.transform=''; } if(t.identifier===TOUCH.lookId) TOUCH.lookId=null; } };
   addEventListener('touchend',end); addEventListener('touchcancel',end);
-  $('tPounce').addEventListener('touchstart',e=>{ e.preventDefault(); pounce(); }); $('tRun').addEventListener('touchstart',e=>{ e.preventDefault(); TOUCH.run=!TOUCH.run; $('tRun').classList.toggle('on',TOUCH.run); }); $('tTime').addEventListener('touchstart',e=>{ e.preventDefault(); toggleTOD(); });
+  $('tPounce').addEventListener('touchstart',e=>{ e.preventDefault(); pounce(); }); $('tSwipe').addEventListener('touchstart',e=>{ e.preventDefault(); attack('swipe'); }); $('tBite').addEventListener('touchstart',e=>{ e.preventDefault(); attack('bite'); }); $('tRun').addEventListener('touchstart',e=>{ e.preventDefault(); TOUCH.run=!TOUCH.run; $('tRun').classList.toggle('on',TOUCH.run); }); $('tTime').addEventListener('touchstart',e=>{ e.preventDefault(); toggleTOD(); });
   $('hint').innerHTML='Left thumb to move · drag right side to look'; }
 function startGame(){ if(titleMode===false) return; titleMode=false; $('title').classList.add('out'); $('hud').classList.remove('hidden'); if(isTouch) $('touch').classList.remove('hidden'); initAudio();
   camera.position.set(P.pos.x+Math.sin(camYaw)*6,P.pos.y+3,P.pos.z+Math.cos(camYaw)*6);
@@ -719,7 +763,7 @@ function frame(now){ const dt=Math.min(.05,(now-last)/1000); last=now; T+=dt; U.
   if(!titleMode||T<.3) renderer.render(scene,camera); requestAnimationFrame(frame); }
 applyTOD(); requestAnimationFrame(frame);
 
-window.HUNT={start:startGame, tp:(x,z,yaw)=>{ P.pos.set(x,groundAt(x,z),z); if(yaw!==undefined){ P.yaw=yaw; camYaw=yaw+Math.PI; } SNAP=true; }, night:(v)=>{ todTarget=todT=v?1:0; }, cam:(yaw,pitch,dist)=>{ camYaw=yaw; if(pitch!==undefined) camPitch=pitch; if(dist) camDist=dist; }, P, BR, riverZ, H};
+window.HUNT={pose:(type,p)=>{ P.atk=type?{type,t:p*ATK[type].dur,hit:true,frozen:true}:null; }, start:startGame, tp:(x,z,yaw)=>{ P.pos.set(x,groundAt(x,z),z); if(yaw!==undefined){ P.yaw=yaw; camYaw=yaw+Math.PI; } SNAP=true; }, night:(v)=>{ todTarget=todT=v?1:0; }, cam:(yaw,pitch,dist)=>{ camYaw=yaw; if(pitch!==undefined) camPitch=pitch; if(dist) camDist=dist; }, P, BR, riverZ, H};
 if(QS.has('play')) startGame();
 </script>
 </body>

@@ -10,4 +10,4 @@ A browser game (Three.js r128) set in the Kumaon hills in 1926. You play the leo
 - `lib/`: Three.js r128, GLTFLoader, SkeletonUtils
 - `tools/`: the scripts used to reduce, repose and rig the Meshy models
 
-Controls: WASD move, Shift run, C stalk, Space pounce (under a machan it leaps up), N dusk/night, M sound.
+Controls: WASD move, Shift run, C stalk, click paw swipe (F), right-click bite (E), Space pounce (under a machan it leaps up), N dusk/night, M sound. A swipe knocks a hunter down; a bite kills; a pounce pins him.

@@ -28,6 +28,7 @@ for s, nm in ((1,'L'),(-1,'R')):
     JD += [('thigh'+nm,'hips',(s*X,.72,-.48)),('knee'+nm,'thigh'+nm,(s*X,.45,-.36)),('hock'+nm,'knee'+nm,(s*X,.20,-.55))]
 TAIL = [(0,.84,-.70),(0,.66,-.80),(0,.46,-.83),(0,.28,-.85),(0,.13,-.89),(0,.08,-.96)]
 for i, t in enumerate(TAIL): JD.append(('tail%d' % i, 'hips' if i == 0 else 'tail%d' % (i-1), t))
+JD.append(('jaw', 'head', (0, .875, .74)))
 names = [j[0] for j in JD]; ji = {n:i for i, n in enumerate(names)}; JP = np.array([j[2] for j in JD], float)
 
 # bone segments used for weighting: (joint that owns it, start, end)
@@ -40,6 +41,7 @@ for s, nm in ((1,'L'),(-1,'R')):
     segs.append((ji['wrist'+nm], JP[ji['wrist'+nm]], np.array((s*X,.03,.50))))
     segs.append((ji['hock'+nm], JP[ji['hock'+nm]], np.array((s*X,.03,-.45))))
 segs.append((ji['head'], JP[ji['head']], np.array((0,.96,.95))))
+JAW = ji['jaw']
 segs.append((ji['tail5'], JP[ji['tail5']], np.array((0,.08,-.99))))
 
 def segd(Q, A, B):
@@ -61,6 +63,15 @@ for j in (ji['neck'], ji['head']): D[y < .55, j] = 9
 W = 1.0/np.maximum(D, .012)**4
 dmin = D.min(1, keepdims=True); W[D > dmin*1.6 + .02] = 0
 top = np.argsort(-W, 1)[:, :4]; tw = np.take_along_axis(W, top, 1); tw /= tw.sum(1, keepdims=True)
+D[:, JAW] = 9; W[:, JAW] = 0
+top = np.argsort(-W, 1)[:, :4]; tw = np.take_along_axis(W, top, 1); tw /= tw.sum(1, keepdims=True)
+# lower jaw: below the lip line, in front of the throat
+line = .845 + (z-.80)*.21
+below = np.clip((line-y)/.012, 0, 1); front = np.clip((z-.76)/.04, 0, 1); keep = (y > .755) & (np.abs(x) < .11)
+aj = (below*front*keep).astype(np.float32); jm = aj > 0
+top[jm] = np.stack([np.full(jm.sum(), JAW), np.full(jm.sum(), ji['head']), np.zeros(jm.sum(), int), np.zeros(jm.sum(), int)], 1)
+tw[jm] = np.stack([aj[jm], 1-aj[jm], np.zeros(jm.sum()), np.zeros(jm.sum())], 1)
+print('jaw verts', int(jm.sum()))
 print('joints', NJ, 'verts', len(P), 'unweighted', int((W.sum(1) == 0).sum()))
 
 # smooth normals on welded positions
